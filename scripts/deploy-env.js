@@ -6,7 +6,7 @@ const path = require('path');
 
 const FUNCTION_VARS = {
   webhook: ['META_APP_SECRET', 'WEBHOOK_VERIFY_TOKEN'],
-  admin: ['ADMIN_EMAIL', 'CRON_SECRET'],
+  admin: ['ADMIN_EMAIL', 'CRON_SECRET', 'META_APP_SECRET', 'IG_APP_ID', 'APP_BASE_URL'],
 };
 
 function parseEnvFile(text) {
@@ -56,6 +56,11 @@ function validate(env) {
     problems.push('WEBHOOK_VERIFY_TOKEN must be at least 16 characters');
   }
   if (has('CRON_SECRET') && env.CRON_SECRET.length < 16) problems.push('CRON_SECRET must be at least 16 characters');
+  if (has('IG_APP_ID') && !/^\d+$/.test(env.IG_APP_ID)) problems.push('IG_APP_ID must be digits only');
+  if (has('APP_BASE_URL')) {
+    if (!env.APP_BASE_URL.startsWith('https://')) problems.push('APP_BASE_URL must start with https://');
+    if (env.APP_BASE_URL.endsWith('/')) problems.push('APP_BASE_URL must not end with a slash');
+  }
   if (has('ADMIN_EMAIL') && !env.ADMIN_EMAIL.includes('@')) problems.push('ADMIN_EMAIL must contain @');
   return problems;
 }

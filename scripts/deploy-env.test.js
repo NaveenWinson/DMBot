@@ -9,10 +9,11 @@ const E = require('./deploy-env');
 const SECRET = 'SECRET_xyz_987';
 const LITERAL = {
   webhook: ['META_APP_SECRET', 'WEBHOOK_VERIFY_TOKEN'],
-  admin: ['ADMIN_EMAIL', 'CRON_SECRET'],
+  admin: ['ADMIN_EMAIL', 'CRON_SECRET', 'META_APP_SECRET', 'IG_APP_ID', 'APP_BASE_URL'],
 };
 const good = () => ({
   META_APP_SECRET: SECRET, WEBHOOK_VERIFY_TOKEN: 'verify-' + SECRET, CRON_SECRET: 'cron-' + SECRET, ADMIN_EMAIL: 'me@example.com',
+  IG_APP_ID: '1086562567555339', APP_BASE_URL: 'https://a.example.com',
 });
 
 test('parseEnvFile handles comments, blanks, quotes and = in values', () => {
@@ -34,7 +35,7 @@ test('parseEnvFile malformed line error names line number, not content', () => {
 });
 
 test('missingKeys is sorted and treats empty as missing', () => {
-  assert.deepStrictEqual(E.missingKeys({}), ['ADMIN_EMAIL', 'CRON_SECRET', 'META_APP_SECRET', 'WEBHOOK_VERIFY_TOKEN']);
+  assert.deepStrictEqual(E.missingKeys({}), ['ADMIN_EMAIL', 'APP_BASE_URL', 'CRON_SECRET', 'IG_APP_ID', 'META_APP_SECRET', 'WEBHOOK_VERIFY_TOKEN']);
   assert.deepStrictEqual(E.missingKeys({ ...good(), CRON_SECRET: '' }), ['CRON_SECRET']);
   assert.deepStrictEqual(E.missingKeys(good()), []);
 });
@@ -43,6 +44,9 @@ test('validate rules', () => {
   assert.deepStrictEqual(E.validate(good()), []);
   assert.ok(E.validate({ ...good(), WEBHOOK_VERIFY_TOKEN: 'short' }).some((p) => p.includes('WEBHOOK_VERIFY_TOKEN')));
   assert.ok(E.validate({ ...good(), CRON_SECRET: 'short' }).some((p) => p.includes('CRON_SECRET')));
+  assert.ok(E.validate({ ...good(), IG_APP_ID: '12ab' }).some((p) => p.includes('IG_APP_ID')));
+  assert.ok(E.validate({ ...good(), APP_BASE_URL: 'http://a.com' }).some((p) => p.includes('APP_BASE_URL')));
+  assert.ok(E.validate({ ...good(), APP_BASE_URL: 'https://a.com/' }).some((p) => p.includes('APP_BASE_URL')));
   assert.ok(E.validate({ ...good(), ADMIN_EMAIL: 'nope' }).some((p) => p.includes('ADMIN_EMAIL')));
   assert.ok(E.validate({}).length >= 4);
 });
@@ -86,7 +90,7 @@ test('apply/restore end to end on a temp copy', () => {
     assert.strictEqual(cfg.deployment.name, fn);
   });
   const adminCfg = JSON.parse(fs.readFileSync(path.join(root, 'functions/admin/catalyst-config.json'), 'utf8'));
-  assert.ok(!('META_APP_SECRET' in adminCfg.deployment.env_variables));
+  assert.ok(!('WEBHOOK_VERIFY_TOKEN' in adminCfg.deployment.env_variables));
   const hookCfg = JSON.parse(fs.readFileSync(path.join(root, 'functions/webhook/catalyst-config.json'), 'utf8'));
   assert.ok(!('CRON_SECRET' in hookCfg.deployment.env_variables));
   E.restore(root, backup);

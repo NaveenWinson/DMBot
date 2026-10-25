@@ -7,7 +7,7 @@ const SHARED = path.join(ROOT, 'shared');
 
 const MAP = {
   webhook: ['instagram.js', 'match.js', 'replies.js', 'unlock.js', 'signature.js', 'webhook-handler.js', 'store.js'],
-  admin: ['instagram.js', 'match.js', 'reels.js', 'rules-admin.js', 'store.js', 'guards.js'],
+  admin: ['instagram.js', 'match.js', 'reels.js', 'rules-admin.js', 'store.js', 'guards.js', 'oauth.js'],
 };
 
 for (const [fn, files] of Object.entries(MAP)) {

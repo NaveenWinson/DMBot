@@ -49,12 +49,13 @@ async function handleMessage(m, { store, ig, settings, now = Date.now }) {
   if (!m.text && !m.payload) return { ...base, status: 'skipped', reason: 'no text' };
 
   let profile = null;
-  let waiting = await store.listWaitingByFromId(m.senderId);
+  const accountId = settings.igUserId;
+  let waiting = await store.listWaitingByFromId(accountId, m.senderId);
   if (waiting.length === 0) {
     // The comment's sender id may differ from the messaging id; fall back to the username (consent is given now).
     try {
       profile = await ig.getUserProfile(m.senderId);
-      if (profile && profile.username) waiting = await store.listWaitingByUsername(profile.username);
+      if (profile && profile.username) waiting = await store.listWaitingByUsername(accountId, profile.username);
     } catch (e) {
       return { ...base, status: 'skipped', reason: 'not waiting (' + shortErr(e) + ')' };
     }
@@ -62,7 +63,10 @@ async function handleMessage(m, { store, ig, settings, now = Date.now }) {
   if (waiting.length === 0) return { ...base, status: 'skipped', reason: 'not waiting' };
 
   const rules = new Map();
-  for (const id of new Set(waiting.map((w) => w.ruleId))) rules.set(id, await store.getRule(id));
+  for (const id of new Set(waiting.map((w) => w.ruleId))) {
+    const rule = await store.getRule(id);
+    rules.set(id, rule && rule.accountId === accountId ? rule : null);
+  }
 
   // The button names its keyword; typing DONE covers every keyword they're waiting on.
   let targets;

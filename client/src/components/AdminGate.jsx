@@ -33,12 +33,12 @@ export default function AdminGate({ children }) {
     return (
       <div className={`card ${styles.signin}`}>
         <h1>Sign in</h1>
-        <p className="muted">Sign in with the Catalyst account set as ADMIN_EMAIL.</p>
+        <p className="muted">Sign in with the email the DMBot owner invited.</p>
         <div id="admin-login" />
       </div>
     );
   }
-  if (state === 'forbidden') return <p className="banner bannerBad">This account is not allowed to manage DMBot.</p>;
+  if (state === 'forbidden') return <p className="banner bannerBad">This account is not allowed to use DMBot.</p>;
   if (state === 'error') {
     return (
       <div className="card">

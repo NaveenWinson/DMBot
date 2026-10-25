@@ -9,7 +9,7 @@ const FAN = '900';
 const NOW = 1_800_000_000_000;
 const DAY = 24 * 60 * 60 * 1000;
 const settings = { igUserId: ME, username: 'my_brand', accessToken: 'tok' };
-const gated = { id: '9', mediaId: '555', keyword: 'macau', dmText: 'Real details: https://x.y', gateText: 'Follow us to unlock the Macau guide!', enabled: true };
+const gated = { id: '9', accountId: ME, mediaId: '555', keyword: 'macau', dmText: 'Real details: https://x.y', gateText: 'Follow us to unlock the Macau guide!', enabled: true };
 
 const commentPayload = (over = {}) => ({ object: 'instagram', entry: [{ id: ME, time: 1, field: 'comments', value: { id: '1001', from: { id: FAN, username: 'Fan.One' }, text: 'Macau', media: { id: '555' }, ...over } }] });
 const msgPayload = (message, sender = FAN) => ({ object: 'instagram', entry: [{ id: ME, time: 1, messaging: [{ sender: { id: sender }, recipient: { id: ME }, timestamp: 1, message: { mid: 'm1', ...message } }] }] });
@@ -18,14 +18,14 @@ function world({ follows = false, buttonRejected = false, usernames = { [FAN]: '
   const rows = [];
   const calls = { pr: [], msg: [], profile: 0 };
   const store = {
-    getSettings: async () => settings,
+    getAccountByIgUserId: async (id) => (id === ME ? settings : null),
     listRulesForMedia: async () => [gated],
     getRule: async (id) => (id === gated.id ? gated : null),
     lastReplyText: async () => null,
     claimComment: async (row) => { if (rows.some((r) => r.commentId === row.commentId)) return null; rows.push({ id: 'r' + rows.length, ...row }); return 'r' + (rows.length - 1); },
     updateProcessed: async (id, patch) => Object.assign(rows.find((r) => r.id === id), patch),
-    listWaitingByFromId: async (fromId) => rows.filter((r) => r.fromId === fromId && r.unlockStatus === 'waiting'),
-    listWaitingByUsername: async (u) => rows.filter((r) => r.fromUsername === u && r.unlockStatus === 'waiting'),
+    listWaitingByFromId: async (accountId, fromId) => rows.filter((r) => r.accountId === accountId && r.fromId === fromId && r.unlockStatus === 'waiting'),
+    listWaitingByUsername: async (accountId, u) => rows.filter((r) => r.accountId === accountId && r.fromUsername === u && r.unlockStatus === 'waiting'),
   };
   const ig = {
     sendPrivateReply: async (igUserId, commentId, text, qr) => {
@@ -153,7 +153,7 @@ test('keywords without a gate still send the real DM straight away', async () =>
 test('typing DONE unlocks every keyword the person is waiting on; the button only its own', async () => {
   const other = { ...gated, id: '10', mediaId: '556', keyword: 'avengers', dmText: 'Avengers info' };
   const { deps, calls } = world({ follows: true });
-  deps.store.listRulesForMedia = async (mediaId) => (mediaId === '556' ? [other] : [gated]);
+  deps.store.listRulesForMedia = async (accountId, mediaId) => (mediaId === '556' ? [other] : [gated]);
   deps.store.getRule = async (id) => ({ 9: gated, 10: other }[id] || null);
   await handleWebhook(commentPayload(), deps);
   await handleWebhook(commentPayload({ id: '1002', text: 'avengers', media: { id: '556' } }), deps);
@@ -166,7 +166,7 @@ test('typing DONE unlocks every keyword the person is waiting on; the button onl
 test('the button for one keyword leaves the other keyword waiting', async () => {
   const other = { ...gated, id: '10', mediaId: '556', keyword: 'avengers', dmText: 'Avengers info' };
   const { deps, rows } = world({ follows: true });
-  deps.store.listRulesForMedia = async (mediaId) => (mediaId === '556' ? [other] : [gated]);
+  deps.store.listRulesForMedia = async (accountId, mediaId) => (mediaId === '556' ? [other] : [gated]);
   deps.store.getRule = async (id) => ({ 9: gated, 10: other }[id] || null);
   await handleWebhook(commentPayload(), deps);
   await handleWebhook(commentPayload({ id: '1002', text: 'avengers', media: { id: '556' } }), deps);

@@ -7,3 +7,6 @@
   background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm);
   padding: 8px 12px; font-size: 13px;
 }
+.advanced summary { cursor: pointer; font-weight: 600; color: var(--muted); }
+.advancedBody { margin-top: var(--s4); }
+.webhookTitle { margin-top: var(--s5); }

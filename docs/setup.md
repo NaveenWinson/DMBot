@@ -12,6 +12,25 @@ Someone comments "LINK" ──► Meta webhook ──► /server/webhook/ (Catal
                                               └─ POST /<comment-id>/replies   (public reply)
 ```
 
+## Sharing with friends (several accounts, one deployment)
+Each signed-in email has its own Instagram account, reels, keywords and Activity, and nobody sees anyone else's.
+The 12 public replies are shared. There's no App Review: Meta's Standard Access covers Instagram accounts added to
+the app as testers, which is enough for about 20 friends.
+
+**One-time setup:** in Meta → Instagram → API setup with Instagram login → *Set up Instagram business login* →
+Business login settings, add the OAuth redirect URI `https://<domain>/server/admin/oauth/callback`.
+
+**Adding a friend:**
+1. Their Instagram must be a **public Professional** account (Creator or Business).
+2. Meta dashboard → App roles → Roles → Add people → **Instagram Tester** → their username. They accept the invite at
+   instagram.com → Settings → Website permissions → Apps and websites → Tester invites.
+3. Catalyst console → Authentication → add their email as a user (public sign-up stays off).
+4. They open `https://<domain>/app/`, sign in, and click **Settings → Connect Instagram**. Instagram's login handles the
+   token, so nothing secret is shared. Then they add keywords on **Reels**.
+
+An Instagram account can only be connected to one email. The pasted-token option under Settings → Advanced is
+for the owner only, because it needs the Meta dashboard.
+
 ## Follow-gate (every keyword)
 Only followers get the real DM. Instagram has no "new follower" event and allows one DM per comment, so the
 person's own reply is the trigger:
@@ -65,9 +84,9 @@ Then, in the console for that project:
 1. **Data Store** (Cloud Scale → Data Store): create the three tables below. `node scripts/setup-datastore.js` prints the same list.
    | Table | Columns |
    |---|---|
-   | Settings | `ig_user_id` varchar 32, `username` varchar 64, `access_token` text, `token_expires_at` bigint |
-   | Rules | `media_id` varchar 32 ✱, `permalink` varchar 255, `caption_preview` varchar 255, `keyword` varchar 100 ✱, `dm_text` text ✱, `gate_text` text, `enabled` varchar 5 |
-   | Processed | `comment_id` varchar 32 ✱ **Unique**, `media_id` varchar 32, `from_id` varchar 32, `from_username` varchar 64, `comment_text` text, `rule_id` varchar 32, `dm_status` varchar 10, `reply_status` varchar 10, `reply_text` varchar 255, `unlock_status` varchar 10, `unlock_expires_at` bigint, `unlocked_at` bigint, `error` varchar 255 |
+   | Settings | `owner_email` varchar 100, `ig_user_id` varchar 32, `username` varchar 64, `access_token` text, `token_expires_at` bigint |
+   | Rules | `account_id` varchar 32, `media_id` varchar 32 ✱, `permalink` varchar 255, `caption_preview` varchar 255, `keyword` varchar 100 ✱, `dm_text` text ✱, `gate_text` text, `enabled` varchar 5 |
+   | Processed | `account_id` varchar 32, `comment_id` varchar 32 ✱ **Unique**, `media_id` varchar 32, `from_id` varchar 32, `from_username` varchar 64, `comment_text` text, `rule_id` varchar 32, `dm_status` varchar 10, `reply_status` varchar 10, `reply_text` varchar 255, `unlock_status` varchar 10, `unlock_expires_at` bigint, `unlocked_at` bigint, `error` varchar 255 |
 
    ✱ = mandatory. **`comment_id` must be Unique**: that's what stops a second DM when Meta re-sends a webhook.
    Set each table's permissions so only the server (admin scope) can read and write. The browser never touches the Data Store directly.
@@ -86,6 +105,8 @@ cp .env.deploy.example .env.deploy   # git-ignored
 | `WEBHOOK_VERIFY_TOKEN` | webhook | any random string of 16+ characters; you'll type it into Meta too |
 | `ADMIN_EMAIL` | admin | your Catalyst sign-in email |
 | `CRON_SECRET` | admin | any random string of 16+ characters; the cron job sends it |
+| `IG_APP_ID` | admin | Instagram app ID (digits, same page as the Instagram app secret); `META_APP_SECRET` also goes to admin |
+| `APP_BASE_URL` | admin | `https://<domain>`, no trailing slash (used for the Instagram login redirect) |
 
 Generate random values with `openssl rand -hex 24`.
 

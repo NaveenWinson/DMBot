@@ -1,6 +1,7 @@
 # DMBot: notes for Claude
 
-DMBot automates replies to comments on the owner's own Instagram account, **@twoticket_tribe**. When someone comments a
+DMBot automates replies to comments on Instagram reels. It's **multi-account**: the owner (@twoticket_tribe) and up to
+about 20 invited friends each sign in with their email and connect their own Instagram. When someone comments a
 keyword on a reel, it does three things:
 1. posts a public reply;
 2. sends a **follow-gate DM**;
@@ -17,6 +18,20 @@ The full setup, the Data Store schema and troubleshooting are in [docs/setup.md]
 - npm: **always use the public registry** (`--registry https://registry.npmjs.org`); their internal registry is unreliable.
 - Write in plain language and keep answers short.
 
+## Accounts (multi-user)
+- **One Settings row per account:** `owner_email` (the Catalyst sign-in, lowercased), `ig_user_id`, `username`,
+  `access_token` and `token_expires_at`.
+- **Rules and Processed carry `account_id`,** the owner's `ig_user_id`. Every store query takes `accountId` first.
+  A rule is only usable when `rule.accountId === req.account.igUserId`; otherwise the API returns 404.
+- **Webhook events are routed by `entry.id`,** using `store.getAccountByIgUserId`. Unknown accounts are skipped.
+- **Any Catalyst user may sign in.** The owner invites friends in Catalyst Authentication, with public sign-up off.
+  `ADMIN_EMAIL` is only used by `POST /cron/migrate`, the one-off move of the pre-multi-account data, which is safe to rerun.
+- **Friends connect with Business Login for Instagram** (`shared/oauth.js`):
+  1. `GET /admin/oauth/start` returns the authorize URL, with an HMAC-signed state (email plus a 10-minute expiry).
+  2. `GET /admin/oauth/callback` exchanges the code for a short-lived and then a long-lived token, subscribes the account, saves it, and redirects to `/app/#/settings?connected=1|error=`.
+  3. The redirect URI must be listed in Meta's Business login settings.
+- **Friend accounts need the Instagram Tester role** on the Meta app (Standard Access). Commenters need nothing.
+
 ## Layout
 ```
 shared/           all logic (CommonJS), with tests in shared/test (node:test)
@@ -25,6 +40,7 @@ shared/           all logic (CommonJS), with tests in shared/test (node:test)
   instagram.js        Graph API client (graph.instagram.com, API_VERSION v26.0); IG_MOCK=1 gives a fake client
   store.js            Data Store via ZCQL; ids/usernames are validated before they go into SQL
   match.js            normalize() + exact keyword match;  replies.js: the 12 rotating public replies
+  oauth.js            Instagram login: signed state, authorize URL, code → long-lived token exchange
   signature.js        X-Hub-Signature-256 check;  rules-admin.js: rule validation;  guards.js;  reels.js
 functions/webhook/  Express: GET = Meta verify handshake, POST = comments + messages (keeps the raw body for the signature)
 functions/admin/    Express: Catalyst sign-in + ADMIN_EMAIL guard; /cron/* routes are protected by the x-cron-secret header
@@ -42,7 +58,7 @@ scripts/            deploy-env.js (injects .env.deploy), sync-shared.js (MAP of 
   - A deploy takes about 1–2 minutes. Run it in the background. If `catalyst deploy` seems stuck, kill `deploy.sh`; its trap restores the files.
 - **Secrets:** `.env.deploy` (git-ignored, chmod 600) holds:
   - `META_APP_SECRET` (the **Instagram app secret**) and `WEBHOOK_VERIFY_TOKEN`, for the webhook function;
-  - `ADMIN_EMAIL` and `CRON_SECRET`, for the admin function.
+  - `ADMIN_EMAIL`, `CRON_SECRET`, `META_APP_SECRET`, `IG_APP_ID` (1086562567555339, not secret) and `APP_BASE_URL`, for the admin function.
 
   The template is `.env.deploy.example`. Never print these values or commit them. Read them in a shell
   (`grep '^CRON_SECRET=' .env.deploy | cut -d= -f2-`) without echoing them.
@@ -61,16 +77,18 @@ scripts/            deploy-env.js (injects .env.deploy), sync-shared.js (MAP of 
   CS=$(grep '^CRON_SECRET=' .env.deploy | cut -d= -f2-)
   curl -s -H "x-cron-secret: $CS" https://dmbot-60088311853.development.catalystserverless.in/server/admin/cron/diagnose
   ```
-  It returns:
-  - the connection status and the webhook subscription;
-  - the rules;
+  Without `?ig=`, it returns a summary of every account (username, owner email, rule count, token expiry).
+  With `?ig=<ig_user_id>`, it returns that account's:
+  - webhook subscription;
+  - rules;
   - recent activity;
   - each rule reel's latest comments, with `matchesRule` and `recorded`.
 
   The CLI **can't read Catalyst function logs**; the owner sees them in the console under Functions → webhook → Logs.
   Every webhook logs `webhook: received …` and one result line per comment or message.
-- `POST /server/admin/cron/resubscribe` re-runs the `comments,messages` subscription with the stored token.
-- `POST /server/admin/cron/refresh-token` is called by a Catalyst cron job set up by the owner. Tokens last 60 days.
+- `POST /server/admin/cron/resubscribe` re-runs the `comments,messages` subscription for every account.
+- `POST /server/admin/cron/refresh-token` refreshes every account's token, continuing past failures. A Catalyst cron job set up by the owner calls it. Tokens last 60 days.
+- `POST /server/admin/cron/migrate` is the one-off multi-account migration.
 
 ## Behaviour (decided with the owner)
 - **Keyword rules:**

@@ -57,7 +57,7 @@ async function handleComment(c, { store, ig, settings, rules, rand, lastReply, n
   // Meta retries deliveries, so the unique comment_id row is the "already handled" marker.
   const gated = isGated(rule);
   const rowId = await store.claimComment({
-    commentId: c.commentId, mediaId: c.mediaId, fromId: c.fromId, fromUsername: c.fromUsername.toLowerCase(),
+    accountId: settings.igUserId, commentId: c.commentId, mediaId: c.mediaId, fromId: c.fromId, fromUsername: c.fromUsername.toLowerCase(),
     commentText: c.text, ruleId: rule.id, dmStatus: 'pending', replyStatus: 'pending',
     ...(gated ? { unlockStatus: 'waiting', unlockExpiresAt: now() + UNLOCK_WINDOW_MS } : {}),
   });
@@ -84,46 +84,44 @@ async function handleComment(c, { store, ig, settings, rules, rand, lastReply, n
   return { commentId: c.commentId, status: 'handled', gated, dmStatus, replyStatus, replyText, error };
 }
 
+// Each event belongs to the connected account in entry.id; that account's token, rules and rows are used.
 async function handleWebhook(payload, { store, makeInstagram, rand = Math.random, now = Date.now }) {
   const comments = extractComments(payload);
   const messages = extractMessages(payload);
-  if (comments.length === 0 && messages.length === 0) return [];
-  const settings = await store.getSettings();
-  if (!settings || !settings.accessToken || !settings.igUserId) {
-    return [...comments.map((c) => ({ commentId: c.commentId, status: 'skipped', reason: 'not connected' })),
-      ...messages.map((m) => ({ senderId: m.senderId, status: 'skipped', reason: 'not connected' }))];
-  }
-  const ig = makeInstagram(settings.accessToken);
-  const rulesByMedia = new Map();
   const results = [];
-  let lastReply; // loaded on the first match, then carried through the batch
-  for (const c of comments) {
-    try {
-      if (c.accountId && c.accountId !== settings.igUserId) {
-        results.push({ commentId: c.commentId, status: 'skipped', reason: 'other account' });
-        continue;
-      }
-      if (!rulesByMedia.has(c.mediaId)) rulesByMedia.set(c.mediaId, c.mediaId ? await store.listRulesForMedia(c.mediaId) : []);
-      const rules = rulesByMedia.get(c.mediaId);
-      if (lastReply === undefined && rules.length) lastReply = await store.lastReplyText();
-      const r = await handleComment(c, { store, ig, settings, rules, rand, lastReply, now });
-      if (r.replyText) lastReply = r.replyText;
-      results.push(r);
-    } catch (e) {
-      console.error('comment failed:', c.commentId, shortErr(e));
-      results.push({ commentId: c.commentId, status: 'error', error: shortErr(e) });
+  const accountIds = [...new Set([...comments, ...messages].map((e) => e.accountId))];
+  for (const accountId of accountIds) {
+    const forAccount = (list) => list.filter((e) => e.accountId === accountId);
+    let settings = null;
+    if (/^\d+$/.test(accountId)) settings = await store.getAccountByIgUserId(accountId);
+    if (!settings || !settings.accessToken) {
+      forAccount(comments).forEach((c) => results.push({ commentId: c.commentId, status: 'skipped', reason: 'unknown account' }));
+      forAccount(messages).forEach((m) => results.push({ senderId: m.senderId, status: 'skipped', reason: 'unknown account' }));
+      continue;
     }
-  }
-  for (const m of messages) {
-    try {
-      if (m.accountId && m.accountId !== settings.igUserId) {
-        results.push({ senderId: m.senderId, status: 'skipped', reason: 'other account' });
-        continue;
+    const ig = makeInstagram(settings.accessToken);
+    const rulesByMedia = new Map();
+    let lastReply; // loaded on the first match, then carried through the batch
+    for (const c of forAccount(comments)) {
+      try {
+        if (!rulesByMedia.has(c.mediaId)) rulesByMedia.set(c.mediaId, /^\d+$/.test(c.mediaId) ? await store.listRulesForMedia(accountId, c.mediaId) : []);
+        const rules = rulesByMedia.get(c.mediaId);
+        if (lastReply === undefined && rules.length) lastReply = await store.lastReplyText(accountId);
+        const r = await handleComment(c, { store, ig, settings, rules, rand, lastReply, now });
+        if (r.replyText) lastReply = r.replyText;
+        results.push(r);
+      } catch (e) {
+        console.error('comment failed:', c.commentId, shortErr(e));
+        results.push({ commentId: c.commentId, status: 'error', error: shortErr(e) });
       }
-      results.push(await handleMessage(m, { store, ig, settings, now }));
-    } catch (e) {
-      console.error('message failed:', m.senderId, shortErr(e));
-      results.push({ senderId: m.senderId, status: 'error', error: shortErr(e) });
+    }
+    for (const m of forAccount(messages)) {
+      try {
+        results.push(await handleMessage(m, { store, ig, settings, now }));
+      } catch (e) {
+        console.error('message failed:', m.senderId, shortErr(e));
+        results.push({ senderId: m.senderId, status: 'error', error: shortErr(e) });
+      }
     }
   }
   return results;

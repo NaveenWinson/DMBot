@@ -16,10 +16,17 @@ const idStr = (v) => {
   if (!/^\d+$/.test(s)) throw new Error('bad id');
   return s;
 };
+const emailStr = (v) => {
+  const s = String(v || '').trim().toLowerCase();
+  if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(s)) throw new Error('bad email');
+  return s;
+};
 
+// One Settings row per connected Instagram account, owned by one Catalyst sign-in email.
 function toSettings(r) {
   return {
     id: String(r.ROWID),
+    ownerEmail: r.owner_email || '',
     igUserId: r.ig_user_id || '',
     username: r.username || '',
     accessToken: r.access_token || '',
@@ -27,11 +34,12 @@ function toSettings(r) {
   };
 }
 
-const SETTINGS_COLS = { igUserId: 'ig_user_id', username: 'username', accessToken: 'access_token', tokenExpiresAt: 'token_expires_at' };
+const SETTINGS_COLS = { ownerEmail: 'owner_email', igUserId: 'ig_user_id', username: 'username', accessToken: 'access_token', tokenExpiresAt: 'token_expires_at' };
 
 function toRule(r) {
   return {
     id: String(r.ROWID),
+    accountId: r.account_id || '',
     mediaId: r.media_id,
     permalink: r.permalink || '',
     captionPreview: r.caption_preview || '',
@@ -42,7 +50,7 @@ function toRule(r) {
   };
 }
 
-const RULE_COLS = { mediaId: 'media_id', permalink: 'permalink', captionPreview: 'caption_preview', keyword: 'keyword', dmText: 'dm_text', gateText: 'gate_text', enabled: 'enabled' };
+const RULE_COLS = { accountId: 'account_id', mediaId: 'media_id', permalink: 'permalink', captionPreview: 'caption_preview', keyword: 'keyword', dmText: 'dm_text', gateText: 'gate_text', enabled: 'enabled' };
 
 function ruleRow(fields) {
   const out = {};
@@ -57,6 +65,7 @@ function ruleRow(fields) {
 function toProcessed(r) {
   return {
     id: String(r.ROWID),
+    accountId: r.account_id || '',
     commentId: r.comment_id,
     mediaId: r.media_id,
     fromId: r.from_id || '',
@@ -74,7 +83,7 @@ function toProcessed(r) {
   };
 }
 
-const PROCESSED_COLS = { commentId: 'comment_id', mediaId: 'media_id', fromId: 'from_id', fromUsername: 'from_username', commentText: 'comment_text', ruleId: 'rule_id', dmStatus: 'dm_status', replyStatus: 'reply_status', replyText: 'reply_text', unlockStatus: 'unlock_status', unlockExpiresAt: 'unlock_expires_at', unlockedAt: 'unlocked_at', error: 'error' };
+const PROCESSED_COLS = { accountId: 'account_id', commentId: 'comment_id', mediaId: 'media_id', fromId: 'from_id', fromUsername: 'from_username', commentText: 'comment_text', ruleId: 'rule_id', dmStatus: 'dm_status', replyStatus: 'reply_status', replyText: 'reply_text', unlockStatus: 'unlock_status', unlockExpiresAt: 'unlock_expires_at', unlockedAt: 'unlocked_at', error: 'error' };
 
 function mapCols(cols, patch) {
   const out = {};
@@ -101,39 +110,60 @@ function createStore(catalystApp) {
     return rows.length ? String(rows[0].Processed.ROWID) : null;
   }
 
+  async function firstRow(table, sql) {
+    const rows = await zcql.executeZCQLQuery(sql);
+    return rows.length ? rows[0][table] : null;
+  }
+
   return {
-    async getSettings() {
-      const rows = await zcql.executeZCQLQuery('SELECT * FROM Settings ORDER BY ROWID LIMIT 0, 1');
-      return rows.length ? toSettings(rows[0].Settings) : null;
+    async listAccounts() {
+      return (await queryAll('Settings', 'SELECT * FROM Settings')).map(toSettings);
     },
 
-    async saveSettings(patch) {
-      const current = await this.getSettings();
-      const row = mapCols(SETTINGS_COLS, patch);
+    async getAccountByEmail(email) {
+      const r = await firstRow('Settings', `SELECT * FROM Settings WHERE owner_email = '${emailStr(email)}'`);
+      return r ? toSettings(r) : null;
+    },
+
+    async getAccountByIgUserId(igUserId) {
+      const r = await firstRow('Settings', `SELECT * FROM Settings WHERE ig_user_id = '${idStr(igUserId)}'`);
+      return r ? toSettings(r) : null;
+    },
+
+    // Creates or updates the account row of this sign-in email.
+    async saveAccount(email, patch) {
+      const ownerEmail = emailStr(email);
+      const current = await this.getAccountByEmail(ownerEmail);
+      const row = mapCols(SETTINGS_COLS, { ...patch, ownerEmail });
       if (current) await datastore.table('Settings').updateRow({ ROWID: current.id, ...row });
       else await datastore.table('Settings').insertRow(row);
     },
 
-    async listRules() {
-      return (await queryAll('Rules', 'SELECT * FROM Rules')).map(toRule);
+    async updateAccount(id, patch) {
+      await datastore.table('Settings').updateRow({ ROWID: idStr(id), ...mapCols(SETTINGS_COLS, patch) });
     },
 
-    async listRulesForMedia(mediaId) {
-      return (await queryAll('Rules', `SELECT * FROM Rules WHERE media_id = '${idStr(mediaId)}'`)).map(toRule);
+    async listRules(accountId) {
+      return (await queryAll('Rules', `SELECT * FROM Rules WHERE account_id = '${idStr(accountId)}'`)).map(toRule);
+    },
+
+    async listRulesForMedia(accountId, mediaId) {
+      return (await queryAll('Rules', `SELECT * FROM Rules WHERE account_id = '${idStr(accountId)}' AND media_id = '${idStr(mediaId)}'`)).map(toRule);
     },
 
     async getRule(id) {
-      const rows = await zcql.executeZCQLQuery(`SELECT * FROM Rules WHERE ROWID = '${idStr(id)}'`);
-      return rows.length ? toRule(rows[0].Rules) : null;
+      const r = await firstRow('Rules', `SELECT * FROM Rules WHERE ROWID = '${idStr(id)}'`);
+      return r ? toRule(r) : null;
     },
 
-    async insertRule(fields) {
-      const row = await datastore.table('Rules').insertRow(ruleRow(fields));
+    async insertRule(accountId, fields) {
+      const row = await datastore.table('Rules').insertRow(ruleRow({ ...fields, accountId: idStr(accountId) }));
       return toRule(row);
     },
 
     async updateRule(id, fields) {
-      const row = await datastore.table('Rules').updateRow({ ROWID: idStr(id), ...ruleRow(fields) });
+      const { accountId, ...rest } = fields; // a rule never moves to another account
+      const row = await datastore.table('Rules').updateRow({ ROWID: idStr(id), ...ruleRow(rest) });
       return toRule(row);
     },
 
@@ -159,28 +189,47 @@ function createStore(catalystApp) {
     },
 
     // Comments from this person still waiting for the follow check (see unlock.js).
-    async listWaitingByFromId(fromId) {
-      const rows = await zcql.executeZCQLQuery(`SELECT * FROM Processed WHERE from_id = '${idStr(fromId)}' AND unlock_status = 'waiting'`);
+    async listWaitingByFromId(accountId, fromId) {
+      const rows = await zcql.executeZCQLQuery(`SELECT * FROM Processed WHERE account_id = '${idStr(accountId)}' AND from_id = '${idStr(fromId)}' AND unlock_status = 'waiting'`);
       return rows.map((r) => toProcessed(r.Processed));
     },
 
-    async listWaitingByUsername(username) {
-      const rows = await zcql.executeZCQLQuery(`SELECT * FROM Processed WHERE from_username = '${usernameStr(username)}' AND unlock_status = 'waiting'`);
+    async listWaitingByUsername(accountId, username) {
+      const rows = await zcql.executeZCQLQuery(`SELECT * FROM Processed WHERE account_id = '${idStr(accountId)}' AND from_username = '${usernameStr(username)}' AND unlock_status = 'waiting'`);
       return rows.map((r) => toProcessed(r.Processed));
     },
 
-    // The public reply used on the most recent comment, so the next one can be different.
-    async lastReplyText() {
-      const rows = await zcql.executeZCQLQuery('SELECT reply_text FROM Processed ORDER BY CREATEDTIME DESC LIMIT 0, 1');
-      return rows.length ? rows[0].Processed.reply_text || null : null;
+    // The public reply used on this account's most recent comment, so the next one can be different.
+    async lastReplyText(accountId) {
+      const r = await firstRow('Processed', `SELECT reply_text FROM Processed WHERE account_id = '${idStr(accountId)}' ORDER BY CREATEDTIME DESC LIMIT 0, 1`);
+      return r ? r.reply_text || null : null;
     },
 
-    async listActivity(limit = 100) {
+    async listActivity(accountId, limit = 100) {
       const n = Math.max(1, Math.min(PAGE, Math.floor(Number(limit)) || 100));
-      const rows = await zcql.executeZCQLQuery(`SELECT * FROM Processed ORDER BY CREATEDTIME DESC LIMIT 0, ${n}`);
+      const rows = await zcql.executeZCQLQuery(`SELECT * FROM Processed WHERE account_id = '${idStr(accountId)}' ORDER BY CREATEDTIME DESC LIMIT 0, ${n}`);
       return rows.map((r) => toProcessed(r.Processed));
+    },
+
+    // One-off move from the single-account version: the account row without an owner goes to adminEmail,
+    // and rules/processed rows without an account go to that account. Safe to run again.
+    async migrateLegacy(adminEmail) {
+      const owner = emailStr(adminEmail);
+      const out = { account: null, rules: 0, processed: 0 };
+      const orphans = (await this.listAccounts()).filter((a) => !a.ownerEmail);
+      if (orphans.length > 1) throw new Error('more than one account row without an owner');
+      if (orphans.length === 1 && !(await this.getAccountByEmail(owner))) await this.updateAccount(orphans[0].id, { ownerEmail: owner });
+      const account = await this.getAccountByEmail(owner);
+      if (!account || !account.igUserId) return out;
+      out.account = account.igUserId;
+      for (const [table, key] of [['Rules', 'rules'], ['Processed', 'processed']]) {
+        const rows = await queryAll(table, `SELECT ROWID FROM ${table} WHERE account_id IS NULL`);
+        for (const r of rows) await datastore.table(table).updateRow({ ROWID: String(r.ROWID), account_id: account.igUserId });
+        out[key] = rows.length;
+      }
+      return out;
     },
   };
 }
 
-module.exports = { createStore, toRule, ruleRow, toSettings, toProcessed, idStr, usernameStr };
+module.exports = { createStore, toRule, ruleRow, toSettings, toProcessed, idStr, usernameStr, emailStr };

@@ -22,7 +22,7 @@ function withQuickReplies(text, quickReplies) {
 }
 
 function createInstagram(accessToken, { fetchImpl = fetch, version = API_VERSION } = {}) {
-  if (process.env.IG_MOCK === '1') return createMockInstagram();
+  if (process.env.IG_MOCK === '1') return createMockInstagram(accessToken);
   const base = `${HOST}/${version}`;
 
   async function call(method, url, body) {
@@ -89,10 +89,11 @@ function createInstagram(accessToken, { fetchImpl = fetch, version = API_VERSION
 }
 
 // IG_MOCK=1: no network, for trying the functions locally with `catalyst serve`.
-function createMockInstagram() {
+function createMockInstagram(accessToken) {
   const log = (...a) => console.log('[IG_MOCK]', ...a);
+  const second = String(accessToken || '').endsWith('-B'); // a token ending in -B is a second mock account
   return {
-    me: async () => ({ user_id: '17840000000000000', username: 'mock_account' }),
+    me: async () => (second ? { user_id: '17840000000000002', username: 'mock_friend' } : { user_id: '17840000000000000', username: 'mock_account' }),
     listReels: async () => [{ id: '18000000000000001', caption: 'Mock reel', media_product_type: 'REELS', permalink: 'https://www.instagram.com/reel/MOCK123/', timestamp: new Date().toISOString() }],
     sendPrivateReply: async (igUserId, commentId, text, qr) => { log('DM', commentId, text, qr ? JSON.stringify(qr) : ''); return { message_id: 'mock' }; },
     sendMessage: async (igUserId, recipientId, text, qr) => { log('message', recipientId, text, qr ? JSON.stringify(qr) : ''); return { message_id: 'mock' }; },

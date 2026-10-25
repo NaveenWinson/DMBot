@@ -20,6 +20,7 @@ async function request(method, path, body) {
 
 export const api = {
   getSettings: () => request('GET', '/admin/settings'),
+  oauthStart: () => request('GET', '/admin/oauth/start'),
   saveToken: (accessToken) => request('PUT', '/admin/settings', { accessToken }),
   getReels: () => request('GET', '/admin/reels'),
   resolveReel: (url) => request('POST', '/admin/reels/resolve', { url }),

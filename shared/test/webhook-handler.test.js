@@ -22,8 +22,8 @@ function fakes({ settingsOverride, dmFails = false, replyFails = false, rules = 
   const claimed = new Set();
   const calls = { dm: [], reply: [], updates: [], claims: [] };
   const store = {
-    getSettings: async () => (settingsOverride === undefined ? settings : settingsOverride),
-    listRulesForMedia: async (mediaId) => rules.filter((r) => r.mediaId === mediaId),
+    getAccountByIgUserId: async (id) => { const s = settingsOverride === undefined ? settings : settingsOverride; return s && s.igUserId === id ? s : null; },
+    listRulesForMedia: async (accountId, mediaId) => rules.filter((r) => r.mediaId === mediaId),
     claimComment: async (row) => {
       calls.claims.push(row);
       if (claimed.has(row.commentId)) return null;
@@ -31,7 +31,7 @@ function fakes({ settingsOverride, dmFails = false, replyFails = false, rules = 
       return 'row-' + row.commentId;
     },
     updateProcessed: async (id, patch) => { calls.updates.push({ id, ...patch }); },
-    lastReplyText: async () => { calls.lastReplyReads = (calls.lastReplyReads || 0) + 1; return lastReply; },
+    lastReplyText: async (accountId) => { calls.lastReplyReads = (calls.lastReplyReads || 0) + 1; return lastReply; },
   };
   const ig = {
     sendPrivateReply: async (igUserId, commentId, text) => {
@@ -63,6 +63,7 @@ test('a matching comment gets a DM and a public reply, and is logged', async () 
   assert.deepStrictEqual(calls.dm, [{ igUserId: ME, commentId: '1001', text: rule.dmText }]);
   assert.deepStrictEqual(calls.reply, [{ commentId: '1001', message: PUBLIC_REPLIES[0] }]);
   assert.strictEqual(calls.claims[0].ruleId, '9');
+  assert.strictEqual(calls.claims[0].accountId, ME);
   assert.strictEqual(calls.claims[0].fromUsername, 'fan');
   assert.deepStrictEqual(calls.updates, [{ id: 'row-1001', dmStatus: 'sent', replyStatus: 'sent', replyText: PUBLIC_REPLIES[0], error: '' }]);
 });
@@ -133,14 +134,14 @@ test('both failures are recorded together', async () => {
 test('nothing happens until an account is connected', async () => {
   const { deps, calls } = fakes({ settingsOverride: null });
   const [r] = await handleWebhook(payload([comment()]), deps);
-  assert.strictEqual(r.reason, 'not connected');
+  assert.strictEqual(r.reason, 'unknown account');
   assert.strictEqual(calls.claims.length, 0);
 });
 
 test('events for a different account id are ignored', async () => {
   const { deps, calls } = fakes();
   const [r] = await handleWebhook(payload([comment()], { accountId: '123' }), deps);
-  assert.strictEqual(r.reason, 'other account');
+  assert.strictEqual(r.reason, 'unknown account');
   assert.strictEqual(calls.claims.length, 0);
 });
 
