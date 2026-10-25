@@ -1,0 +1,8 @@
+.head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.head h1 { margin: 0; }
+.item { padding: var(--s3) var(--s4); margin-bottom: var(--s2); }
+.top { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: baseline; margin-bottom: var(--s2); }
+.comment { color: var(--muted); overflow-wrap: anywhere; }
+.when { margin-left: auto; }
+.reply { color: var(--muted); font-size: 13px; margin: var(--s2) 0 0; }
+.error { color: var(--bad); font-size: 13px; margin: var(--s2) 0 0; overflow-wrap: anywhere; }

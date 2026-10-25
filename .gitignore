@@ -1,0 +1,11 @@
+node_modules/
+dist/
+client/dist/
+functions/*/lib/
+.DS_Store
+catalyst-debug.log
+.env
+.env.deploy
+.env.deploy.*
+!.env.deploy.example
+.catalystrc

@@ -1,0 +1,9 @@
+.back { display: inline-block; margin-bottom: var(--s3); color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--text); }
+.reel { display: flex; gap: var(--s4); align-items: center; }
+.thumb { width: 64px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: var(--r-sm); flex-shrink: 0; }
+.title { font-size: 18px; margin-bottom: var(--s1); }
+.ruleHead { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s3); }
+.keyword { font-size: 18px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent); }
+.label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); margin-bottom: var(--s1); }
+.text { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: var(--s4); }

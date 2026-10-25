@@ -1,0 +1,13 @@
+{
+  "client": {
+    "type": "react",
+    "path": "client/dist"
+  },
+  "functions": {
+    "path": "functions",
+    "targets": [
+      "webhook",
+      "admin"
+    ]
+  }
+}

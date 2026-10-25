@@ -1,0 +1,2 @@
+.signin { max-width: 440px; margin: var(--s6) auto; }
+.signin :global(#admin-login) { min-height: 380px; }

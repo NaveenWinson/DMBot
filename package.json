@@ -1,0 +1,9 @@
+{
+  "name": "dmbot",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node --test shared/test/*.test.js scripts/*.test.js",
+    "sync-shared": "node scripts/sync-shared.js"
+  }
+}
